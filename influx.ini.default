@@ -1,0 +1,5 @@
+[influx2]
+url = http://localhost:8086
+org = TNO
+token = my-super-secret-token
+bucket = nexussim

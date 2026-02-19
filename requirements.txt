@@ -1,0 +1,10 @@
+pytimeparse==1.1.8
+Pint==0.24.4
+numpy==2.2.6
+polars==1.31.0
+pytimeparse==1.1.8
+PyYAML==6.0.2
+ulid==1.1
+jsonschema==4.25.1
+pydynaa
+influxdb-client[ciso]==1.49.0

@@ -57,3 +57,6 @@ MANIFEST
 # Temporary or selective for this project.
 *.csv
 *.html
+
+
+influx.ini

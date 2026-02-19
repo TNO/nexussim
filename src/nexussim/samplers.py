@@ -91,11 +91,12 @@ def exponential_load_sampler(
     characterized by the given minimum and maximum bounds.
 
     Args:
-          mean (float, optional): The mean of the exponential distribution. Defaults to 1.0.
-          max_load (float, optional): The maximum  load allowed. Defaults to 10.0.
+          mean (float, optional): The mean of the exponential distribution. Defaults to
+          1.0. max_load (float, optional): The maximum  load allowed. Defaults to 10.0.
 
     Returns:
-        Callable[[], float]: A function that samples and returns a constrained  load value.
+        Callable[[], float]: A function that samples and returns a constrained  load
+        value.
 
     Sees Also:
         https://docs.python.org/3/library/random.html
