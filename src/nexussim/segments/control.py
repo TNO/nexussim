@@ -1,3 +1,5 @@
+import random
+
 from nexussim.context import Context
 from nexussim.segments.base import Segment
 
@@ -5,7 +7,7 @@ from nexussim.segments.base import Segment
 import pydynaa as pd
 
 
-from typing import Callable, Generator
+from typing import Callable, Generator, List
 
 
 class SequenceSegment(Segment):
@@ -114,6 +116,77 @@ class RepeatSegment(Segment):
             self._segment.execute(context)
             wait_on = pd.EventExpression(self._segment, self._segment.SEGMENT_COMPLETED)
             yield wait_on
+
+
+class ConcurrentSegment(Segment):
+    def __init__(self, segments: list[Segment]):
+        super().__init__()
+        self._segments = segments
+        if not segments:
+            raise ValueError("ConcurrentSegment must have at least one segment")
+        for segment in self._segments:
+            segment._parent = self._id
+
+    def _segment_body(
+        self, context: Context
+    ) -> Generator[pd.EventExpression, None, None]:
+        """
+        This method executes all segments in the list concurrently.
+
+        It resets each segment in the list and executes them all in parallel. The
+        method waits for all segments to complete before returning.
+
+        Args:
+            context (Context): A context object providing access to the compute resources.
+
+        Yields:
+            EventExpression: An event expression that represents the wait condition for
+            the completion of all segments' execution.
+        """
+        wait_events = None
+        for segment in self._segments:
+            segment.reset()
+            segment.execute(context)
+            wait_events = (
+                pd.EventExpression(segment, segment.SEGMENT_COMPLETED) & wait_events
+            )
+
+        yield wait_events
+
+
+class ChoiceSegment(Segment):
+    def __init__(self, segments: list[Segment], weights: list[float] = None):
+        super().__init__()
+        self._segments = segments
+        if not segments:
+            raise ValueError("ChoiceSegment must have at least one segment")
+        for segment in self._segments:
+            segment._parent = self._id
+        self._weights = weights
+
+    def _segment_body(
+        self, context: Context
+    ) -> Generator[pd.EventExpression, None, None]:
+        """
+        This method executes one segment in the list randomly selected.
+
+        It resets the randomly selected segment and executes it. The method waits for
+        the segment to complete before returning.
+
+        Args:
+            context (Context): A context object providing access to the compute resources.
+
+        Yields:
+            EventExpression: An event expression that represents the wait condition for
+            the completion of the randomly chosen segment's execution.
+        """
+        segment_choice = random.choices(
+            population=self._segments, weights=self._weights, k=1
+        )[0]
+        segment_choice.reset()
+        segment_choice.execute(context)
+        wait_on = pd.EventExpression(segment_choice, segment_choice.SEGMENT_COMPLETED)
+        yield wait_on
 
 
 ## Utility condition functions
