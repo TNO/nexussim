@@ -5,7 +5,12 @@ Changelog
 Snap
 ===========
 
-
+v0.0.3
+===========
+- added listeners for influx db, to enable persitant storage and visualisation (e.g. on a grafana dashboard) 
+- description field included in Compute model
+- reader for a nexuss sim (from yaml to a dict)
+- Scene model (translates the scene description into a nexus simulation)
 v0.0.2
 ===========
 - Initial concepts of a program
@@ -23,5 +28,3 @@ v0.0.1
 - Examples for usage initiated.
 - Basic segment for constant load usage
 - Basic segment for variable load usage
-
-

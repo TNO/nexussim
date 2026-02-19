@@ -1,19 +1,3 @@
-# Badges
-
-These are examples of badges you might want to add to your README:  
-Please update the URLs accordingly.
-
-[![Built Status](https://api.cirrus-ci.com/github/<USER>/nexussim.svg?branch=main)](https://cirrus-ci.com/github/<USER>/nexussim)  
-[![ReadTheDocs](https://readthedocs.org/projects/nexussim/badge/?version=latest)](https://nexussim.readthedocs.io/en/stable/)  
-[![Coveralls](https://img.shields.io/coveralls/github/<USER>/nexussim/main.svg)](https://coveralls.io/r/<USER>/nexussim)  
-[![PyPI-Server](https://img.shields.io/pypi/v/nexussim.svg)](https://pypi.org/project/nexussim/)  
-[![Conda-Forge](https://img.shields.io/conda/vn/conda-forge/nexussim.svg)](https://anaconda.org/conda-forge/nexussim)  
-[![Monthly Downloads](https://pepy.tech/badge/nexussim/month)](https://pepy.tech/project/nexussim)  
-[![Twitter](https://img.shields.io/twitter/url/http/shields.io.svg?style=social&label=Twitter)](https://twitter.com/nexussim)  
-[![PyScaffold](https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold)](https://pyscaffold.org/)
-
----
-
 # nexussim
 
 NexusSim is a cutting-edge simulator designed to assess the performance of applications
@@ -22,34 +6,29 @@ model, analyze, and optimize interactions in distributed systems, uncovering ins
 into resource usage and application behavior across all layers of the computing
 continuum.
 
----
 
 ## Making Changes & Contributing
 
 External contributors should follow the guidelines in
 [CONTRIBUTING.rst](CONTRIBUTING.rst)
 
-## Developers' section
+## Requirements
+- Python tested with version 3.10, 3.11, 3.12, 3.13 and 3.14
+- [pyDynaa](https://github.com/TNO/cDynAA)
 
-Practical information for TNO developers
-
-### Installation
+## Installation
 
 After cloning the project, make sure you put the following in place:
 
-1. Create a python environment based on `python3.11`.  This version is the main version
-   for development. Using a python3.11 installation and within the root of the cloned
+1. Create a python environment within the root of the cloned
    repository, run:
 
 ```bash
-python -m venv .venv 
+python -m venv .venv
 ```
-If you are not using `python3.11` or you want to install virtual environments with other
-python, look at this [stackoverflow_query](https://stackoverflow.com/questions/70422866/how-to-create-a-venv-with-a-different-python-version) 
 
-2. Install pydynaa.  `pydynaa` comes in wheels for specific python versions and OS support (linux, MacOS).  Get the correct wheel file and pip install it.  
+2. Install [pyDynaa](https://pypi.org/project/pydynaa/) or install [from source](https://pypi.org/project/pydynaa/).
 
-TODO: Include here in the future the instructions to get it from package repositories in ci.gitlab.
 
 3. Make your local repository an editable installation of the `nexussim` package:
 
@@ -57,14 +36,27 @@ TODO: Include here in the future the instructions to get it from package reposit
 python -m pip install --verbose --editable .
 ```
 
-## Examples
+
+## Usage examples
 
 The `examples` folder, contains several examples on how to create and run nexussim models.  They are executable python scripts.
 
-<!-- This project uses [pre-commit](https://pre-commit.com/). Please make sure to install it before making any changes:
-
+Some examples needs extra requirements.  For installing all necessary extras, run:
 ```bash
-pip install pre-commit
-cd nexussim
-pre-commit install 
-``` -->
+pip install -r ./examples/examples_requirements.txt
+```
+
+## Development notes
+### Influx
+The CPU logger has tha ability to write to an influx database.
+The configuration for the database can be found in `influx.ini`. To get started first copy 'influx.ini.default' to `influx.ini`. Alternatively the configuration can be set via environment variables
+`INFLUXDB_V2_URL`, `INFLUXDB_V2_ORG`, `INFLUXDB_V2_TOKEN` etc. see [influxdb-client docs](https://influxdb-client.readthedocs.io/en/stable/api.html#influxdb_client.InfluxDBClient.from_env_properties)
+In that case the bucket is defined via the environment variable `INFLUXDB_V2_BUCKET`.
+
+A simple influx database can be started in docker for example as follows:
+`docker run --name influx2 -p 8086:8086 -e DOCKER_INFLUXDB_INIT_MODE=setup -e DOCKER_INFLUXDB_INIT_USERNAME=admin -e DOCKER_INFLUXDB_INIT_PASSWORD=admin123 -e DOCKER_INFLUXDB_INIT_ORG=TNO -e DOCKER_INFLUXDB_INIT_BUCKET=nexussim -e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-token -d influxdb:2.7`
+
+The example above workes with the default influx.ini when run on the local machine, Ortherwise url, port and token need to be changed in both influx.ini and docker run command
+
+### Ci pipline
+There is a ci pipline. It is worth noting that this runs in main development repository in TNO's gitlab and not in the public github mirror. It uses a pydynaa wheel stored in the gitlab package registry.

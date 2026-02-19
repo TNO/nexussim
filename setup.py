@@ -1,6 +1,6 @@
 """
-    Setup file for nexussim.
-    Use setup.cfg to configure your project.
+Setup file for nexussim.
+Use setup.cfg to configure your project.
 """
 
 from setuptools import setup

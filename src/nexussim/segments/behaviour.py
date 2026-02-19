@@ -1,8 +1,7 @@
-from nexussim.samplers import gaussian_load_sampler
-from nexussim.segments.base import Segment
-
-
 from typing import Generator
+
+from nexussim.samplers import gaussian_load_sampler
+from nexussim.segments.base import EventProvider, Segment
 
 
 class SampledLoadSegment(Segment):
@@ -10,26 +9,30 @@ class SampledLoadSegment(Segment):
         self,
         cpu_load_sampler: Generator = gaussian_load_sampler(),
         freq: float = 1.0,
-        duration_sec: float = 10.0,
+        duration: float = 10.0,
     ):
         """
-        Initializes the SampledLoadSegment with a CPU load sampler, frequency, and duration.
+        Initializes the SampledLoadSegment with a CPU load sampler, frequency, and
+        duration.
 
         Args:
             cpu_load_sampler (Generator, optional):
-                A generator function that samples CPU load values. Sampler __must__ take care of maximal load and minimal
-                load constraints.Defaults to a Gaussian load sampler.
+                A generator function that samples CPU load values. Sampler __must__ take
+                care of maximal load and minimal load constraints.Defaults to a Gaussian
+                load sampler.
 
             freq (float, optional):
-                The frequency at which the CPU load is sampled, in Hz. Must be greater than 0. Defaults to 1.0.
+                The frequency at which the CPU load is sampled, in Hz. Must be greater
+                than 0. Defaults to 1.0.
 
-            duration_sec (float, optional):
-                The duration of the segment in seconds. Must be greater than 0. Defaults to 1.0.
+            duration (float, optional):
+                The duration of the segment in seconds. Must be greater than 0. Defaults
+                to 1.0.
 
         Raises:
             ValueError:
                 If the freq parameter is less than or equal to 0. ValueError: If the
-            duration_sec parameter is less than or equal to 0.
+            duration parameter is less than or equal to 0.
         """
 
         super().__init__()
@@ -39,9 +42,9 @@ class SampledLoadSegment(Segment):
                 "freq parameter (frequency, in Hz) must be greater than 0."
             )
         self._freq = freq
-        if duration_sec <= 0:
-            raise ValueError("duration_sec parameter must be greater than 0.")
-        self._duration = duration_sec
+        if duration <= 0:
+            raise ValueError("duration parameter must be greater than 0.")
+        self._duration = duration
 
     def _segment_body(self, context):
         """
@@ -76,7 +79,13 @@ class SampledLoadSegment(Segment):
 
 
 class ConstantLoadSegment(Segment):
-    def __init__(self, cpu_load: float = 1.0, duration_sec: float = 1.0):
+    def __init__(
+        self,
+        cpu_load: float = 1.0,
+        mem_load: float = 0.0,
+        duration: float = 1.0,
+        cycles: int = 0,
+    ):
         """
         Initializes the ConstantLoadSegment with a CPU load and duration.
 
@@ -84,12 +93,18 @@ class ConstantLoadSegment(Segment):
             cpu_load (float, optional): The CPU load as a fraction of total CPU
             capacity.
                 Defaults to 1.0.
-            duration_sec (float, optional): The duration of the segment in seconds.
+            mem_load (float, optional): The memory load in bytes.
+            duration (float, optional): The duration of the segment in seconds.
                 Defaults to 1.0.
+            cycles (int, optional): The number of cycles to run. Defaults to 0.
+
+        Remarks:
+            _duration_ and _cycles_ add up.
 
         """
         self._cpu_load = cpu_load
-        self._duration = duration_sec
+        self._duration = duration if duration is not None else 0.0
+        self._cycles = cycles
         super().__init__()
 
     @property
@@ -117,11 +132,23 @@ class ConstantLoadSegment(Segment):
 
         return self._duration
 
+    @property
+    def cycles(self):
+        """
+        Returns the number of cycles for the segment.
+
+        This property provides the number of cycles this segment is supposed to run.
+
+        Returns:
+            int: The number of cycles.
+        """
+        return self._cycles
+
     def _segment_body(self, context):
         """
-        This method requests constant CPU and Memory resources for the segment, then yields an event
-        expression to wait for the specified duration. After the duration has elapsed,
-        the segment is resumed.
+        This method requests constant CPU and Memory resources for the segment, then
+        yields an event expression to wait for the specified duration. After the
+        duration has elapsed, the segment is resumed.
 
         Once the segment completes its execution, it releases the CPU resources.
 
@@ -134,7 +161,76 @@ class ConstantLoadSegment(Segment):
         """
 
         context.compute.cpu.request_cpu(self.id, self.cpu_load)
-        yield self._schedule_after(self.duration, self.RESUME_SEGMENT)
+        cpu_speed = context.compute.cpu.cpu_speed()
+        cycles_duration = 0.0
+        if cpu_speed > 0.0:  # Only if cpu_speed is not known
+            cycles_duration = self.cycles / cpu_speed
+        yield self._schedule_after(self.duration + cycles_duration, self.RESUME_SEGMENT)
+
+        # Cleaning resources
+        context.compute.cpu.release_cpu(self.id)
+
+
+class ConstantLoadWaitSegment(Segment):
+    def __init__(
+        self,
+        wait_on: EventProvider = None,
+        cpu_load: float = 1.0,
+        mem_load: float = 0.0,
+    ):
+        """
+        Initializes the ConstantLoadWaitSegment with a CPU and memory load and event to
+        wait upon.
+
+        Args:
+            wait_on (EventProvider):
+                The event provider to wait upon.
+            cpu_load (float, optional):
+                The CPU load as a fraction of total CPU capacity.Defaults to 1.0.
+            mem_load (float, optional):
+                The memory load in bytes.
+        Remarks:
+            _duration_ and _cycles_ add up.
+
+        """
+        self._event_provider = wait_on
+        self._cpu_load = cpu_load
+        super().__init__()
+
+    @property
+    def cpu_load(self):
+        """
+        Returns the CPU load for the segment.
+
+        This property provides the CPU load that is requested by this segment during
+        its execution.
+
+        Returns:
+            float: The CPU load as a fraction of total CPU capacity.
+        """
+
+        return self._cpu_load
+
+    def _segment_body(self, context):
+        """
+        This method requests constant CPU and Memory resources for the segment, then
+        collects an event to be observed (from an event provider). The segment is
+        resumed after the event is produced by the provider.
+
+        Only waits for the first event to be thrown by the event provider.
+
+        Once the segment completes its execution, it releases the CPU resources.
+
+        Args:
+            context (dict): A context object providing access to the compute resources.
+
+        Yields:
+            EventExpression: An event expression that represents the wait condition that
+            resumes the segment's execution.
+        """
+
+        context.compute.cpu.request_cpu(self.id, self.cpu_load)
+        yield self._event_provider.scheduled_event()
 
         # Cleaning resources
         context.compute.cpu.release_cpu(self.id)

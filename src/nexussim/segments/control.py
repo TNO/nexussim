@@ -1,25 +1,33 @@
 import random
+from typing import Callable, Generator
+
+import pydynaa as pd
 
 from nexussim.context import Context
 from nexussim.segments.base import Segment
 
 
-import pydynaa as pd
-
-
-from typing import Callable, Generator, List
-
-
 class SequenceSegment(Segment):
+    """ A segment that executes a list of segments in sequence. """
     def __init__(self, segments: list[Segment]):
         super().__init__()
         self._segments = segments
         for segment in self._segments:
-            segment._parent = self._id
+            segment.parent = self.id
 
     @property
     def segments(self):
+        """ Returns the list of segments in the sequence segment. """
         return self._segments
+
+    @Segment.parent.setter
+    def parent(self, parent: str):
+        """ Sets the parent of the concurrent segment.
+        Updates child segments.
+        """
+        self._parent = parent
+        for segment in self._segments:
+            segment.parent = self.id
 
     def _segment_body(
         self, context: Context
@@ -31,7 +39,8 @@ class SequenceSegment(Segment):
         completion before moving on to the next segment.
 
         Args:
-            context (Context): A context object providing access to the compute resources.
+            context (Context): A context object providing access to the compute
+            resources.
 
         Yields:
             EventExpression: An event expression that represents the wait condition for
@@ -46,6 +55,7 @@ class SequenceSegment(Segment):
 
 
 class WhileSegment(Segment):
+    """ A segment that executes a given segment while a given condition is True. """
     def __init__(self, segment: Segment, condition: Callable[[Context], bool]) -> None:
         """
         Initializes a WhileSegment with a segment.
@@ -55,15 +65,15 @@ class WhileSegment(Segment):
         segment. The segment is executed until completion and then the condition is
         re-evaluated.
 
-        condition is a function that takes a context (Context) as input and returns
-        a boolean value.
+        condition is a function that takes a context (Context) as input and returns a
+        boolean value.
 
         Args:
             segment (Segment): The segment to be executed in the while segment.
         """
         super().__init__()
         self._segment = segment
-        self._segment._parent = self._id
+        self._segment.parent = self.id
         self._condition = condition
 
     def _segment_body(
@@ -75,8 +85,19 @@ class WhileSegment(Segment):
             wait_on = pd.EventExpression(self._segment, self._segment.SEGMENT_COMPLETED)
             yield wait_on
 
+    @property
+    def segment(self):
+        """ Returns the segment to be executed in the while segment. """
+        return self._segment
+
+    @Segment.parent.setter
+    def parent(self, parent: str):
+        self._parent = parent
+        self._segment.parent = self.id
+
 
 class RepeatSegment(Segment):
+    """ A segment that repeats a given segment a number of times. """
     def __init__(self, segment: Segment, times: int) -> None:
         """
         Initializes a RepeatSegment with a segment and the number of times to repeat.
@@ -90,10 +111,21 @@ class RepeatSegment(Segment):
         """
         super().__init__()
         self._segment = segment
-        self._segment._parent = self._id
+        self._segment.parent = self.id
         if times < 0:
             raise ValueError("Number of times must be positive")
         self._times = times
+
+    @property
+    def segment(self):
+        """ Returns the segment to be repeated. """
+        return self._segment
+
+    # Overrides the parent property setter
+    @Segment.parent.setter
+    def parent(self, parent: str):
+        self._parent = parent
+        self._segment.parent = self.id
 
     def _segment_body(
         self, context: Context
@@ -105,7 +137,8 @@ class RepeatSegment(Segment):
         moving on to the next iteration.
 
         Args:
-            context (Context): A context object providing access to the compute resources.
+            context (Context): A context object providing access to the compute
+            resources.
 
         Yields:
             EventExpression: An event expression that represents the wait condition for
@@ -119,13 +152,23 @@ class RepeatSegment(Segment):
 
 
 class ConcurrentSegment(Segment):
+    """ A segment that executes a list of segments concurrently. """
     def __init__(self, segments: list[Segment]):
         super().__init__()
         self._segments = segments
         if not segments:
             raise ValueError("ConcurrentSegment must have at least one segment")
         for segment in self._segments:
-            segment._parent = self._id
+            segment.parent = self.id
+
+    @Segment.parent.setter
+    def parent(self, parent: str):
+        """ Sets the parent of the concurrent segment.
+        Updates child segments.
+        """
+        self._parent = parent
+        for segment in self._segments:
+            segment.parent = self.id
 
     def _segment_body(
         self, context: Context
@@ -133,11 +176,12 @@ class ConcurrentSegment(Segment):
         """
         This method executes all segments in the list concurrently.
 
-        It resets each segment in the list and executes them all in parallel. The
-        method waits for all segments to complete before returning.
+        It resets each segment in the list and executes them all in parallel. The method
+        waits for all segments to complete before returning.
 
         Args:
-            context (Context): A context object providing access to the compute resources.
+            context (Context): A context object providing access to the compute
+            resources.
 
         Yields:
             EventExpression: An event expression that represents the wait condition for
@@ -153,16 +197,42 @@ class ConcurrentSegment(Segment):
 
         yield wait_events
 
+    @property
+    def segments(self):
+        """ Returns the list of segments in the concurrent segment. """
+        return self._segments
+
 
 class ChoiceSegment(Segment):
+    """ A segment that chooses one of a list of segments to execute. """
     def __init__(self, segments: list[Segment], weights: list[float] = None):
+        """
+        Initializes a ChoiceSegment with a list of segments.
+
+        Args:
+            segments (list[Segment]): A list of segments to choose from.
+            weights (list[float], optional): A list of weights associated with each
+            segment. Defaults to None.
+
+        Raises:
+            ValueError: If the list of segments is empty.
+        """
         super().__init__()
         self._segments = segments
         if not segments:
             raise ValueError("ChoiceSegment must have at least one segment")
         for segment in self._segments:
-            segment._parent = self._id
+            segment.parent = self.id
         self._weights = weights
+
+    @Segment.parent.setter
+    def parent(self, parent: str):
+        """ Sets the parent of the concurrent segment.
+        Updates child segments.
+        """
+        self._parent = parent
+        for segment in self._segments:
+            segment.parent = self.id
 
     def _segment_body(
         self, context: Context
@@ -174,7 +244,8 @@ class ChoiceSegment(Segment):
         the segment to complete before returning.
 
         Args:
-            context (Context): A context object providing access to the compute resources.
+            context (Context): A context object providing access to the compute
+            resources.
 
         Yields:
             EventExpression: An event expression that represents the wait condition for
@@ -188,7 +259,13 @@ class ChoiceSegment(Segment):
         wait_on = pd.EventExpression(segment_choice, segment_choice.SEGMENT_COMPLETED)
         yield wait_on
 
+    @property
+    def segments(self):
+        """ Returns the list of segments in the choice segment. """
+        return self._segments
 
-## Utility condition functions
-def forever(context: Context) -> bool:
+
+# Utility condition functions
+def forever(_: Context) -> bool:
+    """ A condition function that always returns True."""
     return True

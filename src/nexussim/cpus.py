@@ -14,7 +14,16 @@ class CPUProvider(Protocol):
         Returns:
             float: The maximum number of CPUs.
         """
-        ...
+
+    def cpu_speed(self) -> float:
+        """
+        Returns the CPU speed.
+
+        This method should be implemented to return the CPU speed in Hz.
+
+        Returns:
+            float: The CPU speed.
+        """
 
     def free_cpus(self) -> float:
         """
@@ -26,7 +35,6 @@ class CPUProvider(Protocol):
         Returns:
             float: The free CPUs.
         """
-        ...
 
     def used_cpus(self) -> float:
         """
@@ -38,7 +46,6 @@ class CPUProvider(Protocol):
         Returns:
             float: The used CPUs.
         """
-        ...
 
     def request_cpu(self, requester: str, cpus_frac: float) -> bool:
         """
@@ -55,7 +62,6 @@ class CPUProvider(Protocol):
         Returns:
             bool: True if the request was successful, False otherwise.
         """
-        ...
 
     def release_cpu(self, requester: str) -> bool:
         """
@@ -71,7 +77,6 @@ class CPUProvider(Protocol):
         Returns:
             bool: True if the release was successful, False otherwise.
         """
-        ...
 
     def flush(self) -> None:
         """
@@ -80,27 +85,32 @@ class CPUProvider(Protocol):
         This method should be implemented to flush the CPU provider, releasing all
         allocated CPU resources.
         """
-        ...
 
     def cpu_usage(self) -> dict[str, float]:
         """
         Returns the CPU usage per requester.
         """
-        ...
 
 
 class UnboundedCPU:
-    """A CPU that, despite having a limited capacity, will not fail ever on CPU requests.
+    """A CPU that, despite having a limited capacity,
+       will not fail ever on CPU requests.
 
     Created to models where we do not want to deal with lack of CPUs.
     """
 
-    def __init__(self, max_cpus: float, observers: list[Observer] | None = None):
+    def __init__(
+        self,
+        max_cpus: float,
+        cpu_speed: float = 0.0,
+        observers: list[Observer] | None = None,
+    ):
         """
         Initializes the UnboundedCPU with a maximum number of CPUs.
 
         Args:
             max_cpus (float): The maximum number of CPUs that can be allocated.
+            cpu_speed (float, optional): The CPU speed in Hz. Defaults to 0.0.
             observers (list[Observer] | None, optional): A list of observers to notify
                 when the used CPUs change.
 
@@ -108,6 +118,7 @@ class UnboundedCPU:
         """
         self._used_cpus = {}
         self._max_cpus = max_cpus
+        self._cpu_speed = cpu_speed
         self._observers = observers
 
     def max_cpus(self) -> float:
@@ -118,6 +129,15 @@ class UnboundedCPU:
             float: The maximum number of CPUs.
         """
         return self._max_cpus
+
+    def cpu_speed(self) -> float:
+        """
+        Returns the CPU speed.
+
+        Returns:
+            float: The CPU speed.
+        """
+        return self._cpu_speed
 
     def free_cpus(self) -> float:
         """
@@ -183,6 +203,9 @@ class UnboundedCPU:
             bool: True if the release was successful, False otherwise.
         """
         self.request_cpu(requester, 0)
+        if self._observers is not None:
+            for observer in self._observers:
+                observer.update(self)
         return True
 
     def flush(self) -> None:

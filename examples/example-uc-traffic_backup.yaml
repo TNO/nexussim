@@ -1,0 +1,230 @@
+# yaml-language-server: $schema=mirto-dynaa-v1-openapi.yaml#/components/schemas/service_chain
+name: TrafficUC
+version: v0.1
+computes:
+  - id: compute_traffic_camera
+    description: Traffic camera acting as the source of the video feed
+    cpus: 1
+    cpu_speed: 800 MHz
+    mem: 256 MB
+  - id: compute_fog_server
+    cpus: 8
+    cpu_speed: 2.5 GHz
+    mem: 64 GB
+  - id: compute_hesi_vm
+    cpus: 8
+    cpu_speed: 2.4 GHz
+    mem: 32 GB
+  - id: compute_crf_cloud
+    cpus: 20
+    cpu_speed: 3 GHz
+    mem: 256 GB
+  - id: compute_mobinet_backoffice
+    cpus: 4
+    cpu_speed: 2.1 GHz
+    mem: 8 GB
+networks:
+  - id: network_helmond
+    peers:
+      - compute_traffic_camera
+      - compute_fog_server
+      - network_swarco_vpn
+    bandwidth: 10 Gbps
+    latency: 6 ms
+  - id: network_crf
+    peers:
+      - compute_crf_cloud
+      - network_swarco_vpn
+    bandwidth: 10 Gbps
+    latency: 30 ms
+  - id: network_swarco_vpn
+    peers:
+      - network_helmond
+      - network_crf
+      - network_hesi
+      - compute_mobinet_backoffice
+    bandwidth: 1 Gbps
+    latency: 55 ms
+  - id: network_hesi
+    peers:
+      - network_swarco_vpn
+      - network_tno
+      - compute_hesi_vm
+    bandwidth: 10 Gbps
+    latency: 10 ms
+  - id: network_tno
+    peers:
+      - network_hesi
+      - compute_mobinet_backoffice
+    bandwidth: 1 Gbps
+    latency: 17 ms
+software components:
+  - id: camera_feed
+    segments:
+      - id: camera:video_stream
+        emits:
+          size: 100 kB
+          when: on_finish
+          target: 'detector:receive'
+        stops_after:
+          time: 41.667 ms
+  - id: vehicle_detector
+    base_load:
+      cpu_load: 0.1
+      memory: 124.3 MB
+    segments:
+      - id: detector:receive
+        stops_after:
+          event: true
+      - id: detector:convert_to_greyscale
+        load:
+          cpu_load: 0.8
+          memory: 10 MB
+        stops_after:
+          cycles: 400
+      - id: detector:apply_mask
+        load:
+          cpu_load: 1
+          memory: 60 MB
+        stops_after:
+          cycles: 12000
+      - id: detector:detecting
+        load:
+          cpu_load: 2.4
+          memory: 120 MB
+        stops_after:
+          cycles: 23000
+        emits:
+          when: on_finish
+          size: 256 B
+          target: localization:receive
+  - id: detection_localization
+    base_load:
+      cpu_load: 0.1
+      memory: 100 MB
+    segments:
+      - id: localization:receive
+        stops_after:
+          event: true
+      - id: localization:operate
+        load:
+          cpu_load: 0.8
+          memory: 20 kB
+        stops_after:
+          cycles: 256
+          time: 20 ms
+        emits:
+          size: 312 B
+          when: on_finish
+          target: tracking:receive
+  - id: tracking
+    base_load:
+      cpu_load: 0.25
+      memory: 4 GB
+    segments:
+      - id: tracking:receive
+        stops_after:
+          event: true
+      - id: tracking:extrapolate_existing
+        load:
+          cpu_load: 4
+          memory: 1 GB
+        stops_after:
+          cycles: 1024000
+      - id: tracking:find_neighbor
+        load:
+          cpu_load: 1
+          memory: 128 MB
+        stops_after:
+          cycles: 10000
+      - id: tracking:allocate_best
+        load:
+          cpu_load: 1
+          memory: 10 MB
+        stops_after:
+          cycles: 43210
+        emits:
+          size: 5 MB
+          when: on_finish
+          target:
+            - analysis:receive
+            - prediction:receive
+  - id: track_analysis
+    base_load:
+      cpu_load: 0.25
+      memory: 2 GB
+    segments:
+      - id: analysis:receive
+        stops_after:
+          event: true
+      - id: analysis:operate
+        load:
+          cpu_load: 8
+          memory: 2 GB
+        stops_after:
+          cycles: 987654321
+        emits:
+          size: 5 MB
+          when: on_finish
+          target: output:gather
+  - id: prediction
+    base_load:
+      cpu_load: 0.25
+      memory: 2.5 GB
+    segments:
+      - id: prediction:receive
+        stops_after:
+          event: true
+      - id: prediction:predict
+        load:
+          cpu_load: 2
+          memory: 1 GB
+        stops_after:
+          cycles: 55555
+        emits:
+          size: 5 MB
+          when: on_finish
+          target:
+            - collisions:receive
+            - redlight:receive
+  - id: collision_detection
+    base_load:
+      cpu_load: 0.01
+      memory: 140 MB
+    segments:
+      - id: collisions:receive
+        stops_after:
+          event: true
+      - id: collisions:predict
+        load:
+          cpu_load: 1
+          memory: 512 MB
+        stops_after:
+          cycles: 874521028
+        emits:
+          size: 100 kB
+          when: on_finish
+          target: output:gather
+  - id: redlight_violation_detection
+    base_load:
+      cpu_load: 0.25
+      memory: 35 MB
+    segments:
+      - id: redlight:receive
+        stops_after:
+          event: true
+      - id: redlight:predict
+        load:
+          cpu_load: .9
+          memory: 1 MB
+        stops_after:
+          cycles: 87542
+        emits:
+          size: 100 kB
+          when: on_finish
+          target: output:gather
+  - id: kpi_database
+    segments:
+      - id: output:gather
+        stops_after:
+          event: true

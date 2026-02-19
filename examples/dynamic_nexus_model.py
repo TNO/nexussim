@@ -1,9 +1,10 @@
+import pydynaa as pd
+
 from nexussim.compute import Compute
 from nexussim.cpus import UnboundedCPU
 from nexussim.loggers import CPUUsageBuffer, to_polars_dataframes
-import pydynaa as pd
-from nexussim.segments.behaviour import SampledLoadSegment
 from nexussim.samplers import exponential_load_sampler, gaussian_load_sampler
+from nexussim.segments.behaviour import SampledLoadSegment
 from nexussim.segments.control import SequenceSegment, WhileSegment, forever
 
 
@@ -20,29 +21,30 @@ def main():
 
      (3) runs the simulation until completion.
     """
-    ## Setup a program or segment to execute (segments takes one hour to complete)
+    # Setup a program or segment to execute (segments takes one hour to complete)
     segment1 = SampledLoadSegment(
         cpu_load_sampler=gaussian_load_sampler(
             min_load=0, max_load=2.0, mean=0.8, std=0.01
         ),
         freq=1.0,
-        duration_sec=200.0,
+        duration=200.0,
     )
     segment2 = SampledLoadSegment(
         cpu_load_sampler=exponential_load_sampler(max_load=4.0, mean=1.2),
         freq=1.0,
-        duration_sec=200.0,
+        duration=200.0,
     )
 
-    ## Setup a computing node
+    # Setup a computing node
     compute = Compute(
         memory=None,
         cpu=UnboundedCPU(10.0, observers=[CPUUsageBuffer(timestampfunc=sim_time)]),
     )
 
-    ## Start the execution of the program in the computing node
-    ## The program is a while loop that executes a of segment1, segment2, segment1, segment2.
-    ## It never stops
+    # Start the execution of the program in the computing node
+    # The program is a while loop that executes a of segment1, segment2, segment1,
+    # segment2.
+    # It never stops
     compute.execute(
         WhileSegment(
             segment=SequenceSegment([segment1, segment2, segment1, segment2]),
@@ -50,10 +52,10 @@ def main():
         )
     )
 
-    ## Run dynaa simulator
+    # Run dynaa simulator
     pd.DynAASim().run(3600)  # runs for one hour
 
-    ## Collect results and report
+    # Collect results and report
     cpu_usage_buffer = compute.context.compute.cpu._observers[0]
     total_usage, usage = to_polars_dataframes(cpu_usage_buffer)
     print(total_usage)
