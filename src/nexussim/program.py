@@ -1,7 +1,7 @@
 from typing import Callable
 from pydynaa import Entity, EventHandler
 from nexussim.context import Context
-from nexussim.segments.base import Segment, SegmentState
+from nexussim.segments.base import Segment
 from nexussim.segments.behaviour import *
 from nexussim.segments.control import *
 
@@ -109,3 +109,25 @@ def repeat(segment, times):
         RepeatSegment: A Segment that represents the repeated execution of the given segment.
     """
     return RepeatSegment(segment=segment, times=times)
+
+def concurrent(*segments):
+    """
+    Factory for creating a ConcurrentSegment which executes multiple segments concurrently.
+
+    Args:
+        *segments (Segment): Segments to be executed concurrently.
+
+    Returns:
+        Segment: A Segment that represents the concurrent execution of the given segments.
+    """
+    return ConcurrentSegment(segments=segments)
+
+def choice(*segments, weights=None):
+    """
+    Factory for creating a ChoiceSegment which chooses a segment at random based on a given set of weights.
+
+    Args:
+        *segments (Segment): Segments to be considered for choosing a segment.
+        weights (list[float]): Weights associated with the choice of each segment.
+    """
+    return ChoiceSegment(segments=segments, weights=weights)

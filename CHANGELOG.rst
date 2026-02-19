@@ -5,7 +5,13 @@ Changelog
 Snap
 ===========
 
+
+v0.0.2
+===========
 - Initial concepts of a program
+- Several segment behaviours included
+- Basic behaviour for CPU consumption
+- Several examples
 
 v0.0.1
 ===========

@@ -1,4 +1,4 @@
-from nexussim.segments.control import RepeatSegment, SequenceSegment
+from nexussim.segments.control import ChoiceSegment, ConcurrentSegment, RepeatSegment, SequenceSegment
 import pytest
 from nexussim.compute import Compute
 from nexussim.context import Context
@@ -107,7 +107,49 @@ def test_repeat_segment(dynaa_sim, context):
     assert segment_c.state == SegmentState.COMPLETED
     assert context.compute.cpu.used_cpus() == 0.0
 
-
 def test_repeat_segment_accepts_no_negative_times():
     with pytest.raises(ValueError):
         repeat_segment = RepeatSegment(segment=ConstantLoadSegment(), times=-1)
+
+def test_concurrent_segment(dynaa_sim, context):
+    segment_c = ConstantLoadSegment(cpu_load=2.0, duration_sec=5.0)
+    segment_v = SampledLoadSegment(freq=1.0, duration_sec=3.0)
+    concurrent_segment = ConcurrentSegment(segments=[segment_c, segment_v])
+    assert (segment_c.parent == concurrent_segment.id)  # after insertion of segment into concurrent segment, the parent of segment should be concurrent segment
+    assert (segment_v.parent == concurrent_segment.id)
+    concurrent_segment.execute(context)
+    dynaa_sim.run(2)  # runs for 2 seconds
+    assert segment_c.state == SegmentState.RUNNING
+    assert segment_v.state == SegmentState.RUNNING
+    assert concurrent_segment.state == SegmentState.RUNNING
+    dynaa_sim.run(4)  # runs for 3 seconds
+    assert segment_c.state == SegmentState.RUNNING
+    assert segment_v.state == SegmentState.COMPLETED
+    assert concurrent_segment.state == SegmentState.RUNNING
+    dynaa_sim.run(6)  # runs for 3 seconds
+    assert segment_c.state == SegmentState.COMPLETED
+    assert segment_v.state == SegmentState.COMPLETED
+    assert concurrent_segment.state == SegmentState.COMPLETED
+
+def test_concurrent_segment_accepts_no_empty_list():
+    with pytest.raises(ValueError):
+        concurrent_segment = ConcurrentSegment(segments=[])
+
+def test_choice_segment(dynaa_sim, context):
+    segment_c = ConstantLoadSegment(cpu_load=2.0, duration_sec=5.0)
+    segment_v = SampledLoadSegment(freq=1.0, duration_sec=3.0)
+    choice_segment = ChoiceSegment(segments=[segment_c, segment_v], weights=[0.5, 0.5])
+    assert (segment_c.parent == choice_segment.id)  # after insertion of segment into choice segment, the parent of segment should be choice segment
+    assert (segment_v.parent == choice_segment.id)
+    choice_segment.execute(context)
+    dynaa_sim.run(2)  # runs for 2 seconds
+    assert (segment_c.state == SegmentState.RUNNING) != (segment_v.state == SegmentState.RUNNING)
+    assert choice_segment.state == SegmentState.RUNNING
+    dynaa_sim.run(6)  # runs for 6 seconds
+    assert segment_c.state == SegmentState.COMPLETED or SegmentState.IDLE
+    assert segment_v.state == SegmentState.COMPLETED or SegmentState.IDLE
+    assert choice_segment.state == SegmentState.COMPLETED
+
+def test_choice_segment_accepts_no_empty_list():
+    with pytest.raises(ValueError):
+        choice_segment = ChoiceSegment(segments=[], weights=[0.5, 0.5])
