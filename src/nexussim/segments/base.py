@@ -1,9 +1,12 @@
+import random
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from enum import Enum
+from typing import Protocol
 
 from pydynaa import Entity, EventExpression, EventHandler, EventType
-from ulid import ulid
-from typing import Generator
+
+from nexussim.exceptions import NexussimException
 
 
 class SegmentState(Enum):
@@ -19,15 +22,50 @@ class SegmentState(Enum):
 class Segment(ABC, Entity):
     """
     Defines a standard base class to all segments.
+
+    Segments represent blocks of code __activity__ that are bundled together for
+    modelling purposes.  It is useful to think about segments as parts of a program for
+    which the user can assign a certain behavior and resource usage.
+
+    So for example, a program can have a segment where it basically waits for input
+    (e.g. a web request) -- this segment can be characterized by very low cpu and memory
+    load, as basically the program is idle or on hold.  After a message arrives, the
+    program switches to a different segment to handle the request -- this new segment
+    has a higher cpu and memory usage, as it is handling the request.  After the request
+    is handled, the program returns to the idle segment to wait for the next request.
+
+    Nexussim provides basic segment model archetypes: example segments for constant load
+    or Gaussian load usage.  Users can derive from the Segment base class to model their
+    own segment models.
+
+    All segment models have a common basic behavior:
+
+    - A segment can be in one of three states: IDLE, RUNNING, COMPLETED. And the state
+      can be obtained via the `state` property.
+
+    - A segment can be executed by calling the `execute` method.  When a segment is
+      executed, it transitions to the RUNNING state.  Implementers of segment models can
+      define a body for the segment -- the body is a generator of events.  During the
+      segment execution, it waits for events produced (in sequence) by the body. When an
+      event occurs, the segment resumes, adjusts resource loads, and generates a new
+      event to wait for. This process repeats until the segment completes. Upon
+      completion, the body generator must return None.  This produces a
+      SEGMENT_COMPLETED event (fixed) and throws the segment into the COMPLETED state.
+
+        - If the `execute` method is called while the segment is already in the RUNNING
+          state, an exception is raised.
+
+    - A segment can also be stopped by calling the `stop` method.  When a segment is
+      stopped, it transitions to the COMPLETED state.  If the segment is already in the
+      COMPLETED state, an exception is raised.
+
+    - A segment can be reset by calling the `reset` method.  When a segment is reset, it
+      transitions to the IDLE state.
     """
 
-    SEGMENT_COMPLETED = EventType(
-        "SEGMENT_COMPLETED", "Event emmited at the end of a segment"
-    )
+    SEGMENT_COMPLETED = EventType("SEGMENT_COMPLETED", "Event emmited at the end of a segment")
 
-    RESUME_SEGMENT = EventType(
-        "RESUME_SEGMENT", "Event that triggers the resume of a segment"
-    )
+    RESUME_SEGMENT = EventType("RESUME_SEGMENT", "Event that triggers the resume of a segment")
 
     def __init__(self) -> None:
         """
@@ -42,7 +80,8 @@ class Segment(ABC, Entity):
         """
         self._state = SegmentState.IDLE
         self._parent = "<root>"
-        self._id = self._parent + "::" + str(ulid())
+        self._id_suffix = hex(random.getrandbits(20))[2:]
+        self._handlers = []
 
     @property
     def state(self) -> SegmentState:
@@ -56,7 +95,10 @@ class Segment(ABC, Entity):
 
     @property
     def id(self) -> str:
-        return self._id
+        return self._parent + "::" + self._id_suffix
+
+    def suffix(self, suffix: str):
+        self._id_suffix = suffix
 
     @property
     def parent(self) -> str:
@@ -64,7 +106,6 @@ class Segment(ABC, Entity):
 
     @parent.setter
     def parent(self, parent: str):
-        self._id = self._id.replace(self._parent, parent)
         self._parent = parent
 
     def execute(self, context: dict) -> None:
@@ -105,12 +146,12 @@ class Segment(ABC, Entity):
             try:
                 wait_event = next(self._seg)
                 resume_handler = EventHandler(lambda report: self.execute(context))
-                self._wait_once(resume_handler, expression=wait_event)
+                self._handlers.append(self._wait_once(resume_handler, expression=wait_event))
             except StopIteration:
                 self.stop()
             return
 
-        raise Exception("Segment is already completed. Cannot execute.")
+        raise NexussimException("Segment is already completed. Cannot execute.")
 
     def stop(self):
         """
@@ -127,6 +168,8 @@ class Segment(ABC, Entity):
         self._schedule_now(self.SEGMENT_COMPLETED)
         if hasattr(self, "_seg"):
             del self._seg
+        for h in self._handlers:
+            self._dismiss(h)
 
     def reset(self):
         """
@@ -171,3 +214,17 @@ class Segment(ABC, Entity):
         """
 
         raise NotImplementedError()
+
+
+class EventProvider(Protocol):
+    def scheduled_event(self) -> EventExpression:
+        """
+        Returns an event expression that will be triggered in the future.
+
+        EventProviders are entities that throw events to be observed by a segment.
+
+        Returns:
+            EventExpression: An event expression that represents a condition to wait for
+            during the segment's execution.
+        """
+        raise NotImplementedError

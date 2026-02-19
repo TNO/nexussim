@@ -1,0 +1,34 @@
+name: TestScene2
+version: v0.1
+computes:
+  - id: a_computer
+    description: Describes a computing node
+    cpus: 8
+    cpu_speed: 1GHz
+    mem: 262144 KB
+
+networks:
+  - id: a_network
+    bandwidth: 10 Gbps
+    latency: 6 ms
+    peers:
+      - a_computer
+
+software components:
+  - id: test_task
+    segments:
+      - repeat:
+          n_times: 4
+          segments:
+            - id: test_task_1
+              load:
+                cpu_load: 1.5
+                memory: 1 MB
+              stops_after:
+                cycles: 10000
+            - id: test_task_2
+              load:
+                cpu_load: 0.5
+                memory: 512 KB
+              stops_after:
+                cycles: 5000

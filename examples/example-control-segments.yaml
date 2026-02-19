@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=mirto-dynaa-v1-openapi.yaml#/components/schemas/service_chain
+name: ExampleControlSegments
+version: v0.1
+computes:
+  - id: compute_traffic_camera
+    description: Traffic camera acting as the source of the video feed
+    cpus: 1
+    cpu_speed: 800 MHz
+    mem: 256 MB
+  - id: compute_fog_server
+    cpus: 8
+    cpu_speed: 2.5 GHz
+    mem: 64 GB
+  - id: compute_hesi_vm
+    cpus: 8
+    cpu_speed: 2.4 GHz
+    mem: 32 GB
+  - id: compute_crf_cloud
+    cpus: 20
+    cpu_speed: 3 GHz
+    mem: 256 GB
+  - id: compute_mobinet_backoffice
+    cpus: 4
+    cpu_speed: 2.1 GHz
+    mem: 8 GB
+
+software components:
+  - id: test_concurrent
+    segments:
+      - concurrent:
+          segments:
+            - repeat:
+                n_times: 2
+                segments:
+                  - id: test_concurrent_1
+                    load:
+                      cpu_load: 1
+                      memory: 1 MB
+                    stops_after:
+                       time: 5s
+                  - id: test_concurrent_2
+                    load:
+                      cpu_load: 2
+                      memory: 1 MB
+                    stops_after:
+                       time: 15s
+            - choice:
+                weights: [0.5, 0.5]
+                segments: 
+                  - id: test_concurrent_3
+                    load:
+                      cpu_load: 1
+                      memory: 1 MB
+                    stops_after:
+                      time: 20s
+                  - id: test_concurrent_4
+                    load:
+                      cpu_load: 1
+                      memory: 1 MB
+                    stops_after:
+                      time: 40s
+            - id: test_concurrent_5
+              load:
+                cpu_load: 1
+                memory: 1 MB
+              stops_after:
+                cycles: 10000000000
+  - id: test_choice
+    segments:
+      - choice:
+          weights: [0.35, 0.35, 0.3]
+          segments:
+            - repeat:
+                n_times: 2
+                segments:
+                  - id: test_choice_1
+                    load:
+                      cpu_load: 1
+                      memory: 1 MB
+                    stops_after:
+                      time: 10s
+                  - id: test_choice_2
+                    load:
+                      cpu_load: 3
+                      memory: 1 MB
+                    stops_after:
+                      time: 10s
+            - concurrent:
+                segments: 
+                  - id: test_choice_3
+                    load:
+                      cpu_load: 1
+                      memory: 1 MB
+                    stops_after:
+                      time: 12s  
+                  - id: test_choice_4
+                    load:
+                      cpu_load: 1
+                      memory: 1 MB
+                    stops_after:
+                      time: 10s
+            - id: test_choice_5
+              load:
+                cpu_load: 1
+                memory: 1 MB
+              stops_after:
+                      time: 10s
+
+allocations:
+  test_concurrent : compute_fog_server
+  test_choice : compute_hesi_vm

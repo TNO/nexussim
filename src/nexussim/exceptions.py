@@ -1,0 +1,2 @@
+class NexussimException(Exception):
+    pass

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=mirto-dynaa-v1-openapi.yaml#/components/schemas/service_chain
+name: TestScene
+version: v0.1
+computes:
+  - id: a_computer
+    description: Describes a computing node
+    cpus: 8
+    cpu_speed: 800 MHz
+    mem: 256 MB
+
+networks:
+  - id: a_network
+    bandwidth: 1 Gbps
+    latency: 6 ms
+    peers:
+      - a_computer
+
+software components:
+  - id: test_task
+    segments:
+      - repeat:
+          id: repeat4
+          n_times: 4
+          segments:
+            - id: test_task_1
+              load:
+                cpu_load: 1.5
+                memory: 1 MB
+              stops_after:
+                cycles: 10000
+              emits:
+                size: 128 MB
+                when: on_finish
+                target: 'test_task:repeat4:test_task_1'
+allocations:
+  test_task : a_computer

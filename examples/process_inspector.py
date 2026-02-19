@@ -1,7 +1,8 @@
 import time
-import psutil
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
+import psutil
 
 
 def monitor_cpu_usage(
@@ -11,7 +12,8 @@ def monitor_cpu_usage(
     output_file: str,
 ):
     """
-    Monitor the CPU usage of a specific process at a given frequency for a certain duration.
+    Monitor the CPU usage of a specific process
+    at a given frequency for a certain duration.
 
     Args:
         process_name (str): Name of the program to monitor (e.g., 'firefox').
@@ -26,16 +28,10 @@ def monitor_cpu_usage(
         # Find the target process
         while time.time() < end_time:
             # Get all processes matching the process name
-            processes = [
-                p
-                for p in psutil.process_iter(["name"])
-                if process_name.lower() in p.info["name"].lower()
-            ]
+            processes = [p for p in psutil.process_iter(["name"]) if process_name.lower() in p.info["name"].lower()]
 
             if processes:
-                cpu_usage = sum(
-                    p.cpu_percent(interval=1) for p in processes
-                )  # Sum CPU usage of all matching processes
+                cpu_usage = sum(p.cpu_percent(interval=1) for p in processes)  # Sum CPU usage of all matching processes
             else:
                 cpu_usage = 0.0  # If no such process exists, CPU usage is 0
 

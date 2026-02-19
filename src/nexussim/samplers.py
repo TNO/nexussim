@@ -1,5 +1,5 @@
 import random
-from typing import Callable
+from collections.abc import Callable
 
 
 def constant_sampler(load: float = 1.0) -> Callable[[], float]:
@@ -57,9 +57,7 @@ def gaussian_load_sampler(
     return _sampler
 
 
-def uniform_load_sampler(
-    min_load: float = 0.0, max_load: float = 2.0
-) -> Callable[[], float]:
+def uniform_load_sampler(min_load: float = 0.0, max_load: float = 2.0) -> Callable[[], float]:
     """
      Generates a  load sampler using a uniform distribution.
 
@@ -81,9 +79,7 @@ def uniform_load_sampler(
     return _sampler
 
 
-def exponential_load_sampler(
-    mean: float = 1.0, max_load: float = 10.0
-) -> Callable[[], float]:
+def exponential_load_sampler(mean: float = 1.0, max_load: float = 10.0) -> Callable[[], float]:
     """
      Generates a  load sampler using an exponential distribution.
 
@@ -91,11 +87,12 @@ def exponential_load_sampler(
     characterized by the given minimum and maximum bounds.
 
     Args:
-          mean (float, optional): The mean of the exponential distribution. Defaults to 1.0.
-          max_load (float, optional): The maximum  load allowed. Defaults to 10.0.
+          mean (float, optional): The mean of the exponential distribution. Defaults to
+          1.0. max_load (float, optional): The maximum  load allowed. Defaults to 10.0.
 
     Returns:
-        Callable[[], float]: A function that samples and returns a constrained  load value.
+        Callable[[], float]: A function that samples and returns a constrained  load
+        value.
 
     Sees Also:
         https://docs.python.org/3/library/random.html

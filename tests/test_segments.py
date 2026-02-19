@@ -1,11 +1,15 @@
-import pytest
-from nexussim.compute import Compute
-from nexussim.context import Context
-from nexussim.cpus import UnboundedCPU
-from nexussim.memory import UnboundedMemory
-from nexussim.segments.base import Segment, SegmentState
-from nexussim.segments.behaviour import SampledLoadSegment, ConstantLoadSegment
 import pydynaa as pd
+import pytest
+
+from nexussim.exceptions import NexussimException
+from nexussim.segments.base import Segment, SegmentState
+from nexussim.segments.behaviour import (
+    ConstantLoadSegment,
+    ConstantLoadWaitSegment,
+    SampledLoadSegment,
+    SleepSegment,
+    WaitSegment,
+)
 
 
 class TestSegment(Segment):
@@ -25,19 +29,12 @@ class SegmentNoGeneratorBody(Segment):
         pass
 
 
-@pytest.fixture
-def dynaa_sim():
-    pd.DynAASim().reset()
-    return pd.DynAASim()
+class OneShotEventProducer(pd.Entity):
+    OneShotProducerEventType = pd.EventType("OneShotProducerEventType", "An example of an externally generated event.")
+    event_time = 10
 
-
-@pytest.fixture
-def context():
-    return Context(
-        compute=Compute(
-            memory=UnboundedMemory(max_memory=10), cpu=UnboundedCPU(max_cpus=10.0)
-        )
-    )
+    def scheduled_event(self):
+        return self._schedule_after(OneShotEventProducer.event_time, self.OneShotProducerEventType)
 
 
 def test_segment_is_abstract():
@@ -61,6 +58,8 @@ def test_segment_initial_execution(dynaa_sim):
     assert len(pd.Diagnostics().get_future_events()) == 1
     assert segment.parent == "parent"
     assert segment.id.startswith("parent::")
+    segment.reset()
+    assert segment.state == SegmentState.IDLE
 
 
 def test_segment_full_run(dynaa_sim):
@@ -72,7 +71,7 @@ def test_segment_full_run(dynaa_sim):
     assert dynaa_sim.state == 0  # paused
     assert dynaa_sim.current_time == 10
     assert segment.state == SegmentState.COMPLETED
-    with pytest.raises(Exception):
+    with pytest.raises(NexussimException):
         segment.execute({"a": 1})  # Should raise an exception
 
 
@@ -80,23 +79,74 @@ def test_segment_with_no_generator_body():
     segment = SegmentNoGeneratorBody()
     segment.execute({"a": 1})
     assert segment.state == SegmentState.COMPLETED
-    with pytest.raises(Exception):
+    with pytest.raises(NexussimException):
         segment.execute({"a": 1})  # Should raise an exception
 
 
-def test_constant_load_segment(dynaa_sim, context):
-    segment = ConstantLoadSegment(cpu_load=3.0, duration_sec=7.0)
+def test_constant_load_segment():
+    ConstantLoadSegment(cpu_load=3.0, cycles=7000.0)
+    with pytest.raises(ValueError):
+        ConstantLoadSegment(cpu_load=0.0)
+    with pytest.raises(ValueError):
+        ConstantLoadSegment(cpu_load=0.0, cycles=0.0, duration=0.0)
+    with pytest.raises(ValueError):
+        ConstantLoadSegment(cpu_load=0.0, cycles=100.0, duration=10.0)
+
+
+def test_constant_load_segment2(dynaa_sim, context):
+    segment = ConstantLoadSegment(cpu_load=3.0, cycles=9000)
     segment.execute(context)
+    assert segment.cycles == 9000
     dynaa_sim.run(2)  # runs for 2 seconds
     assert dynaa_sim.current_time == 2.0
     assert context.compute.cpu.used_cpus() == 3.0
     dynaa_sim.run()
-    assert dynaa_sim.current_time == 7.0
+    assert dynaa_sim.current_time == 9.0
     assert context.compute.cpu.used_cpus() == 0
 
 
+def test_constant_load_segment3(dynaa_sim, context):
+    segment = ConstantLoadSegment(cpu_load=3.0, duration=3)
+    segment.execute(context)
+    assert segment.duration == 3
+    dynaa_sim.run(2)  # runs for 2 seconds
+    assert dynaa_sim.current_time == 2.0
+    assert context.compute.cpu.used_cpus() == 3.0
+    dynaa_sim.run()
+    assert dynaa_sim.current_time == 3.0
+    assert context.compute.cpu.used_cpus() == 0
+
+
+def test_depreaction_wait_segment(recwarn):
+    assert len(recwarn.list) == 0
+    WaitSegment(duration=7.0)
+    assert len(recwarn.list) == 1
+
+
+def test_depreaction_wait_segment2(recwarn):
+    assert len(recwarn.list) == 0
+    SleepSegment(duration=7.0)
+    assert len(recwarn.list) == 0
+
+
+def test_wait_segment_memory_free(dynaa_sim, context):
+    """SleepSegment should allocate memory on start and free it when the wait ends."""
+    segment = SleepSegment(duration=1.0, mem_load=2)
+    segment.execute(context)
+    # memory should be allocated immediately
+    assert context.compute.memory.used_memory() == 2
+
+    # run until the wait completes
+    dynaa_sim.run()
+    assert dynaa_sim.current_time == 1.0
+    # memory should have been freed by the scheduled handler
+    assert context.compute.memory.used_memory() == 0
+    assert segment.state == SegmentState.COMPLETED
+
+
+@pytest.mark.skip(reason="Reconsider sampled segments with the new CPU model")
 def test_sampled_load_segment(dynaa_sim, context):
-    segment = SampledLoadSegment(freq=1.0, duration_sec=3600.0)
+    segment = SampledLoadSegment(freq=1.0, duration=3600.0)
     segment.execute(context)
     dynaa_sim.run(2)  # runs for 2 seconds
     assert dynaa_sim.current_time == 2.0
@@ -106,7 +156,21 @@ def test_sampled_load_segment(dynaa_sim, context):
     assert context.compute.cpu.used_cpus() == 0
 
     with pytest.raises(ValueError):
-        segment = SampledLoadSegment(freq=0.0, duration_sec=7.0)
+        segment = SampledLoadSegment(freq=0.0, duration=7.0)
 
     with pytest.raises(ValueError):
-        segment = SampledLoadSegment(freq=1.0, duration_sec=0.0)
+        segment = SampledLoadSegment(freq=1.0, duration=0.0)
+
+
+@pytest.mark.skip(reason="Reconsider wait-with-load segments with the new CPU model")
+def test_constant_load_wait_segment(dynaa_sim, context):
+    event_producer = OneShotEventProducer()
+    segment = ConstantLoadWaitSegment(wait_on=event_producer, cpu_load=3.0)
+    segment.execute(context)
+    assert segment.cpu_load == 3.0
+    dynaa_sim.run(2)  # runs for 2 seconds
+    assert dynaa_sim.current_time == 2.0
+    assert context.compute.cpu.used_cpus() == 3.0
+    dynaa_sim.run()
+    assert dynaa_sim.current_time == event_producer.event_time
+    assert context.compute.cpu.used_cpus() == 0

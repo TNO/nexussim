@@ -1,6 +1,20 @@
-from nexussim.cpus import CPUProvider
-import polars as pl
+import configparser
+import logging
+import os
+from collections import defaultdict
 from datetime import datetime
+
+import polars as pl
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import ASYNCHRONOUS
+from influxdb_client.rest import ApiException
+from urllib3.exceptions import NewConnectionError
+
+from nexussim.cpus import CPUProvider
+
+LOGGER = logging.getLogger(__name__)
+
+INFLUX_INI = os.getenv("INFLUX_INI", "influx.ini")
 
 
 class CPUUsageBuffer:
@@ -30,10 +44,7 @@ class CPUUsageBuffer:
             tuple[datetime, float]: A tuple where the first element is the timestamp and
             the second element is the total used CPUs at that time.
         """
-        return (
-            (timestamp, used_cpus)
-            for timestamp, used_cpus in self._total_usage_series.items()
-        )
+        return ((timestamp, used_cpus) for timestamp, used_cpus in self._total_usage_series.items())
 
     def usage_timeseries(self):
         """
@@ -90,3 +101,76 @@ def to_polars_dataframes(cpu_buffer: CPUUsageBuffer):
         ),
     )
     return _pl_total_usage, _pl_usage
+
+
+class _InfluxClientWrapper:
+    def __enter__(self):
+        self.bucket = None
+        self._client = None
+        try:
+            self.bucket = os.environ["INFLUXDB_V2_BUCKET"]
+            self._client = InfluxDBClient.from_env_properties()
+            return self
+        except KeyError:
+            LOGGER.warning("INFLUX config via environment variables failed trying ini")
+            try:
+                self._client = InfluxDBClient.from_config_file(INFLUX_INI)
+                config = configparser.ConfigParser()
+                config.read(INFLUX_INI)
+                self.bucket = config["influx2"]["bucket"]
+                return self
+            except KeyError:
+                LOGGER.warning("INFLUX config invalid via env and ini: %s", INFLUX_INI)
+                return self
+        finally:
+            self.influx_connected = self.bucket is not None and self._client.ping()
+            self.influx_write_api = (
+                self._client.write_api(write_options=ASYNCHRONOUS) if self.influx_connected else None
+            )
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._client:
+            self._client.close()
+
+
+class CPUUsageInflux:
+    def __init__(self, compute_id):
+        self.compute_id = compute_id
+        with _InfluxClientWrapper() as client:
+            self.client = client
+
+    def update(self, cpu_provider: CPUProvider):
+        if not self.client.influx_connected:
+            return
+
+        try:
+            # Write the total CPU usage for this compute
+            self.client.influx_write_api.write(
+                bucket=self.client.bucket,
+                record=Point("total_usage")
+                .tag("compute", self.compute_id)
+                .field("cpu_count", cpu_provider.used_cpus()),
+            )
+
+            # keys in cpu_provider.cpu_usage() are segments
+            # the part before any :: is the process name
+            # for every main program we want the sum of the cpu usage for its's segments
+            # Calculate sums
+            cpu_usages_process = defaultdict(float)
+            for segment, usage in cpu_provider.cpu_usage().items():
+                cpu_usages_process[segment.split("::")[0]] += usage
+
+            # Write sums to influx
+            for process, usage in cpu_usages_process.items():
+                self.client.influx_write_api.write(
+                    bucket=self.client.bucket,
+                    record=Point("cpu_usage")
+                    .tag("process", process)
+                    .tag("compute", self.compute_id)
+                    .field("cpu_count", usage),
+                )
+
+            LOGGER.debug("Wrote to influx")
+        except (NewConnectionError, ApiException):
+            # We managed before to connect but cannot write now.
+            LOGGER.warning("Influx write failed", exc_info=True)
