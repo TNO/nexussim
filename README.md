@@ -12,6 +12,10 @@ continuum.
 External contributors should follow the guidelines in
 [CONTRIBUTING.rst](CONTRIBUTING.rst)
 
+## Referencing
+
+This repository has a [DOI](https://doi.org/10.82135/x7s8-ce73), which can be used for referrencing in articles or quick link.
+
 ## Requirements
 - Python tested with version 3.10, 3.11, 3.12, 3.13 and 3.14
 - [pyDynaa](https://github.com/TNO/cDynAA)
